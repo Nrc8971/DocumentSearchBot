@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document Search Bot</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: Arial, sans-serif;
+        }
+
+        body {
+            background-color: #f5f5f5;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .card {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .upload-section {
+            margin-bottom: 20px;
+        }
+
+        .file-info {
+            margin-top: 10px;
+            color: #4CAF50;
+            display: none;
+        }
+
+        .input-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        input[type="text"] {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 16px;
+        }
+
+        button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.3s;
+        }
+
+        button:hover {
+            background-color: #45a049;
+        }
+
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+
+        .answer-section {
+            display: none;
+        }
+
+        .answer-text {
+            margin-bottom: 15px;
+            line-height: 1.5;
+            white-space: pre-wrap;
+        }
+
+        .sources-list {
+            padding-left: 20px;
+        }
+
+        .sources-list li {
+            margin-bottom: 5px;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+            color: #666;
+        }
+
+        h2 {
+            margin-bottom: 15px;
+            color: #333;
+        }
+    
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background-color: #f0f0f0;
+            border-radius: 10px;
+            margin: 10px 0;
+            overflow: hidden;
+            display: none;
+        }
+
+        .progress-bar-fill {
+            height: 100%;
+            background-color: #4CAF50;
+            width: 0%;
+            transition: width 0.5s ease-in-out;
+        }
+
+        .status-text {
+            margin-top: 5px;
+            color: #666;
+        }
+
+        .error-message {
+            color: #f44336;
+            margin-top: 5px;
+            display: none;
+        }
+        .file-list {
+            margin-top: 20px;
+            padding: 10px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .file-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .file-item:last-child {
+            border-bottom: none;
+        }
+
+        .delete-btn {
+            background-color: #f44336;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .delete-btn:hover {
+            background-color: #d32f2f;
+        }
+
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <div class="upload-section">
+                <input type="file" id="fileInput"  style="display: none;">
+                <button onclick="document.getElementById('fileInput').click()">
+                    Upload Document (PDF, DOCX, TXT, etc.)
+                </button>
+                <div id="fileInfo" class="file-info"></div>
+                <div id="progressBar" class="progress-bar">
+                    <div id="progressBarFill" class="progress-bar-fill"></div>
+                </div>
+                <div id="statusText" class="status-text"></div>
+                <div id="errorMessage" class="error-message"></div>
+            </div>
+            <div id="fileList" class="file-list" style="display: none;">
+                <h3>Uploaded Files</h3>
+                <div id="fileListContent"></div>
+            </div>
+            <div class="input-group">
+                <input type="text" id="questionInput" placeholder="Ask a question about your document..." disabled>
+                <button id="askButton" disabled>Ask</button>
+            </div>
+        </div>
+
+        <div id="loadingIndicator" class="loading">
+            Processing...
+        </div>
+
+        <div id="answerSection" class="card answer-section">
+            <h2>Answer:</h2>
+            <div id="answerText" class="answer-text"></div>
+            <h2>Sources:</h2>
+            <ul id="sourcesList" class="sources-list"></ul>
+        </div>
+    </div>
+
+    <script>
+        let currentTaskId = null;
+        let uploadedFiles = new Set();
+
+        // Function to update file list
+        async function updateFileList() {
+            try {
+                const response = await fetch('/documents');
+                const data = await response.json();
+                uploadedFiles = new Set(data.documents);
+                
+                const fileListContent = document.getElementById('fileListContent');
+                fileListContent.innerHTML = '';
+                
+                if (uploadedFiles.size > 0) {
+                    document.getElementById('fileList').style.display = 'block';
+                    uploadedFiles.forEach(filename => {
+                        const fileItem = document.createElement('div');
+                        fileItem.className = 'file-item';
+                        fileItem.innerHTML = `
+                            <span>${filename}</span>
+                            <button class="delete-btn" onclick="deleteFile('${filename}')">Delete</button>
+                        `;
+                        fileListContent.appendChild(fileItem);
+                    });
+                    questionInput.disabled = false;
+                    askButton.disabled = false;
+                } else {
+                    document.getElementById('fileList').style.display = 'none';
+                    questionInput.disabled = true;
+                    askButton.disabled = true;
+                }
+            } catch (error) {
+                console.error('Error updating file list:', error);
+            }
+        }
+
+        // Function to delete file
+        async function deleteFile(filename) {
+            try {
+                const response = await fetch(`/documents/${filename}`, {
+                    method: 'DELETE'
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Failed to delete file');
+                }
+                
+                await updateFileList();
+                
+                if (uploadedFiles.size === 0) {
+                    questionInput.disabled = true;
+                    askButton.disabled = true;
+                }
+            } catch (error) {
+                console.error('Error deleting file:', error);
+                errorMessage.textContent = 'Error deleting file';
+                errorMessage.style.display = 'block';
+            }
+        }
+
+        // Update the handleFileUpload function to call updateFileList
+        async function handleFileUpload(file) {
+            if (!file) return;
+
+            // Reset UI
+            fileInfo.textContent = '';
+            fileInfo.style.display = 'none';
+            progressBar.style.display = 'none';
+            statusText.textContent = '';
+            errorMessage.style.display = 'none';
+
+            // Validate file size (10MB)
+            if (file.size > 10 * 1024 * 1024) {
+                errorMessage.textContent = 'File size must be less than 10MB';
+                errorMessage.style.display = 'block';
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                loadingIndicator.style.display = 'block';
+                
+                const response = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Upload failed');
+                }
+
+                const data = await response.json();
+                currentTaskId = data.task_id;
+                
+                fileInfo.textContent = `Processing ${file.name}`;
+                fileInfo.style.display = 'block';
+                progressBar.style.display = 'block';
+                
+                // Start checking status
+                checkStatus();
+            } catch (error) {
+                console.error('Upload error:', error);
+                errorMessage.textContent = error.message || 'Error uploading document';
+                errorMessage.style.display = 'block';
+                loadingIndicator.style.display = 'none';
+                progressBar.style.display = 'none';
+                statusText.textContent = 'Upload failed';
+            }
+        }
+
+        // Update the checkStatus function to call updateFileList when processing is complete
+        async function checkStatus() {
+            if (!currentTaskId) return;
+            
+            try {
+                const response = await fetch(`/status/${currentTaskId}`);
+                
+                if (!response.ok) {
+                    throw new Error('Status check failed');
+                }
+                
+                const data = await response.json();
+                
+                if (data.status === 'processing') {
+                    progressBar.style.display = 'block';
+                    progressBarFill.style.width = `${data.progress}%`;
+                    statusText.textContent = `Processing: ${Math.round(data.progress)}% (${data.processed_chunks}/${data.total_chunks} chunks)`;
+                    setTimeout(checkStatus, 1000);
+                } else if (data.status === 'completed') {
+                    progressBar.style.display = 'none';
+                    statusText.textContent = 'Processing completed';
+                    loadingIndicator.style.display = 'none';
+                    await updateFileList();
+                } else if (data.status === 'failed') {
+                    progressBar.style.display = 'none';
+                    statusText.textContent = 'Processing failed';
+                    loadingIndicator.style.display = 'none';
+                    errorMessage.textContent = 'Failed to process document';
+                    errorMessage.style.display = 'block';
+                }
+            } catch (error) {
+                console.error('Status check error:', error);
+                statusText.textContent = 'Error checking status';
+                loadingIndicator.style.display = 'none';
+                errorMessage.textContent = 'Failed to check processing status';
+                errorMessage.style.display = 'block';
+            }
+        }
+
+        // Initial file list update
+        updateFileList();
+
+        fileInput.addEventListener('change', (e) => {
+            handleFileUpload(e.target.files[0]);
+        });
+
+        askButton.addEventListener('click', async () => {
+            const question = questionInput.value.trim();
+            if (!question) return;
+
+            loadingIndicator.style.display = 'block';
+            answerSection.style.display = 'none';
+            errorMessage.style.display = 'none';
+
+            try {
+                const response = await fetch('/query', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ question })
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to get answer');
+                }
+
+                const data = await response.json();
+
+                answerText.textContent = data.answer;
+                sourcesList.innerHTML = data.sources
+                    .map(source => `<li>${source}</li>`)
+                    .join('');
+
+                answerSection.style.display = 'block';
+            } catch (error) {
+                console.error('Query error:', error);
+                errorMessage.textContent = 'Error getting answer';
+                errorMessage.style.display = 'block';
+            }
+
+            loadingIndicator.style.display = 'none';
+        });
+
+        questionInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                askButton.click();
+            }
+        });
+    </script>
+</body>
+</html>
